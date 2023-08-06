@@ -1,0 +1,11 @@
+{
+  "id": "penrose",
+  "name": "Penrose",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "A plugin for Obsidian that allows you to make diagrams with Penrose (https://penrose.cs.cmu.edu/).",
+  "author": "Penrose Contributors",
+  "authorUrl": "https://penrose.cs.cmu.edu/",
+  "fundingUrl": "https://penrose.cs.cmu.edu/",
+  "isDesktopOnly": false
+}
