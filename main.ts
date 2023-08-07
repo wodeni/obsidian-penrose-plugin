@@ -1,4 +1,4 @@
-import { compile, optimize, showError, toSVG } from "@penrose/core";
+import { compile, optimize, showError, toSVG } from "@penrose/core/bundle";
 import {
   App,
   Editor,
@@ -9,7 +9,7 @@ import {
   PluginSettingTab,
   Setting,
 } from "obsidian";
-import { domain, style } from "./trios";
+import { domain, style } from "./trios.js";
 
 // Remember to rename these classes and interfaces!
 
