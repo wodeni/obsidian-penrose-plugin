@@ -104,11 +104,12 @@ export default class PenrosePlugin extends Plugin {
           domain,
           variation: "test",
         };
-        const diagram = await compile(trio);
-        if (diagram.isErr()) {
-          el.appendChild(document.createTextNode(showError(diagram.error)));
+        const compiled = await compile(trio);
+        if (compiled.isErr()) {
+          console.log(compiled.error);
+          el.appendChild(document.createTextNode(showError(compiled.error)));
         } else {
-          const optimized = optimize(diagram.value);
+          const optimized = optimize(compiled.value);
           if (optimized.isErr()) {
             el.appendChild(document.createTextNode(showError(optimized.error)));
           } else {
@@ -117,8 +118,6 @@ export default class PenrosePlugin extends Plugin {
               async () => undefined,
               "penrose-obsidian",
             );
-            console.log(rendered);
-
             el.appendChild(rendered);
           }
         }

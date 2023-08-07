@@ -4,11 +4,12 @@ canvas {
 	height = 400
   }
   
-  layout = [dots, text]
+  layout = [dots, arrows, text]
   
   color {
 	black = #000000
 	white = #ffffff
+	redOrange = #FE4A49
   }
   
   num {
@@ -56,40 +57,80 @@ canvas {
 	ensure disjoint(u.text, v.text, num.labelDist) in text
   }
   
-  forall Vertex u; Vertex v where Edge(u, v) as e {
+  forall Vertex u; Vertex v where Arc(u, v) as e {
 	a = u.dot.center
 	b = v.dot.center
+	t = normalize(b - a) -- tangent
+	n = rot90(t) -- normal
+	m = (a + b) / 2 -- midpoint
   
 	e.start = a
 	e.end = b
-	e.arrow = Line {
-	  start: a
-	  end: b
+	e.offset = ? in dots
+	e.arrow = Path {
+	  d: quadraticCurveFromPoints("open", [a, m + e.offset * n, b])
 	  strokeColor: color.black
+	}
+  
+	e.step = ? in arrows
+	e.pointerCenter = m + (e.offset / 2) * n + e.step * t
+	p = e.pointerCenter
+	x = num.pointerX
+	y = num.pointerY
+	e.pointer = Path {
+	  d: pathFromPoints("closed", [p - x * t + y * n, p + x * t, p - x * t - y * n])
+	  strokeColor: none()
+	  fillColor: color.black
 	}
   
 	e.arrow below u.dot
 	e.arrow below v.dot
+	e.pointer below e.arrow
   
 	encourage vdist(u.dot.center, v.dot.center) < num.edgeDist in dots
+	encourage minimal(sqr(e.offset)) in dots
+	encourage minimal(sqr(e.step)) 
   }
   
-  forall Vertex u; Vertex v where Edge(u, v) as e; u has label {
+  forall Vertex u; Vertex v where Arc(u, v) as e1; Arc(u, v) as e2 {
+	ensure abs(e2.offset - e1.offset) > 2 * num.offset in dots
+  }
+  
+  forall Vertex u; Vertex v where Arc(u, v) as e1; Arc(v, u) as e2 {
+	ensure abs(e1.offset + e2.offset) > 2 * num.offset in dots
+  }
+  
+  forall Vertex u; Vertex v where Arc(u, v) as e; u has label {
 	encourage maximal(min(num.labelDist, rectLineDist(u.bottomLeft, u.topRight, e.start, e.end))) in text
   }
   
-  forall Vertex u; Vertex v where Edge(u, v) as e; v has label {
+  forall Vertex u; Vertex v where Arc(u, v) as e; v has label {
 	encourage maximal(min(num.labelDist, rectLineDist(v.bottomLeft, v.topRight, e.start, e.end))) in text
   }
   
-  forall Vertex u; Vertex v; Vertex w where Edge(u, v) as e; w has label {
+  forall Vertex u; Vertex v; Vertex w where Arc(u, v) as e; w has label {
 	encourage maximal(min(num.labelDist, rectLineDist(w.bottomLeft, w.topRight, e.start, e.end))) in text
+  }
+  
+  forall Vertex a, b, c, d where Arc(a, b) as e1; Arc(c, d) as e2 {
+	ensure norm(e2.pointerCenter - e1.pointerCenter) > max(num.pointerX, num.pointerY)*3 in arrows
+	encourage e1.step == e2.step
+  }
+  
+  forall Vertex v where HighlightVertex(v) {
+	  override v.dot.fillColor = color.redOrange
+	  override v.text.fillColor = color.redOrange
+  }
+  
+  forall Vertex a, b where Arc(a,b) as e; HighlightArc(a,b) {
+	  override e.arrow.strokeColor = color.redOrange 
+	  override e.pointer.fillColor = color.redOrange
   }
 `;
 
 export const domain = `
-type Node
-type Edge
-
-constructor MakeEdge(Node a, Node b) -> Edge
+type Vertex
+predicate Arc(Vertex a, Vertex b)
+predicate HighlightVertex(Vertex a)
+predicate HighlightArc(Vertex a, Vertex b)
 `;
