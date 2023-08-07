@@ -1,3 +1,4 @@
+import { compile, optimize, showError, toSVG } from "@penrose/core";
 import {
   App,
   Editor,
@@ -8,19 +9,20 @@ import {
   PluginSettingTab,
   Setting,
 } from "obsidian";
+import { domain, style } from "./trios";
 
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
+interface PenroseSettings {
   mySetting: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: PenroseSettings = {
   mySetting: "default",
 };
 
-export default class MyPlugin extends Plugin {
-  settings: MyPluginSettings;
+export default class PenrosePlugin extends Plugin {
+  settings: PenroseSettings;
 
   async onload() {
     await this.loadSettings();
@@ -92,6 +94,36 @@ export default class MyPlugin extends Plugin {
     this.registerInterval(
       window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000),
     );
+
+    this.registerMarkdownCodeBlockProcessor(
+      "penrose",
+      async (source: string, el, ctx) => {
+        const trio = {
+          substance: source,
+          style,
+          domain,
+          variation: "test",
+        };
+        const diagram = await compile(trio);
+        if (diagram.isErr()) {
+          el.appendChild(document.createTextNode(showError(diagram.error)));
+        } else {
+          const optimized = optimize(diagram.value);
+          if (optimized.isErr()) {
+            el.appendChild(document.createTextNode(showError(optimized.error)));
+          } else {
+            const rendered = await toSVG(
+              optimized.value,
+              async () => undefined,
+              "penrose-obsidian",
+            );
+            console.log(rendered);
+
+            el.appendChild(rendered);
+          }
+        }
+      },
+    );
   }
 
   onunload() {}
@@ -122,9 +154,9 @@ class SampleModal extends Modal {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-  plugin: MyPlugin;
+  plugin: PenrosePlugin;
 
-  constructor(app: App, plugin: MyPlugin) {
+  constructor(app: App, plugin: PenrosePlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
