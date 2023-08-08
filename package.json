@@ -5,9 +5,9 @@
   "description": "A plugin for Obsidian that allows you to make diagrams with Penrose (https://penrose.cs.cmu.edu/).",
   "main": "main.js",
   "scripts": {
-	"dev": "node esbuild.config.mjs",
-	"build": "node esbuild.config.mjs production",
-	"version": "node version-bump.mjs && git add manifest.json versions.json",
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
     "format": "prettier --write ."
   },
   "keywords": [],
@@ -25,6 +25,6 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "@penrose/core": "file:~/Code/penrose/packages/core"
+    "@penrose/core": "^3.2.0"
   }
 }
