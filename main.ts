@@ -8,8 +8,8 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  TFile,
 } from "obsidian";
-import { domain, style } from "./trios.js";
 
 // Remember to rename these classes and interfaces!
 
@@ -23,7 +23,6 @@ const DEFAULT_SETTINGS: PenroseSettings = {
 
 export default class PenrosePlugin extends Plugin {
   settings: PenroseSettings;
-
   async onload() {
     await this.loadSettings();
 
@@ -56,7 +55,7 @@ export default class PenrosePlugin extends Plugin {
       id: "sample-editor-command",
       name: "Sample editor command",
       editorCallback: (editor: Editor, view: MarkdownView) => {
-        console.log(editor.getSelection());
+        // console.log(editor.getSelection());
         editor.replaceSelection("Sample Editor Command");
       },
     });
@@ -87,7 +86,7 @@ export default class PenrosePlugin extends Plugin {
     // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
     // Using this function will automatically remove the event listener when this plugin is disabled.
     this.registerDomEvent(document, "click", (evt: MouseEvent) => {
-      console.log("click", evt);
+      //   console.log("click", evt);
     });
 
     // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
@@ -98,12 +97,24 @@ export default class PenrosePlugin extends Plugin {
     this.registerMarkdownCodeBlockProcessor(
       "penrose",
       async (source: string, el, ctx) => {
-        const trio = {
-          substance: source,
-          style,
-          domain,
-          variation: "test",
-        };
+        const trio = await getTrio(source, async (path: string) => {
+          const file = this.app.vault.getAbstractFileByPath(path);
+          if (file instanceof TFile) {
+            try {
+              const fileContents = await this.app.vault.read(file);
+              console.log(`read file ${path}`);
+              return fileContents;
+            } catch (error) {
+              console.log("Error reading file:", error);
+              return ""; // TODO: error
+            }
+          } else {
+            console.log("Error reading file", path, file);
+            return ""; // TODO: error
+          }
+        });
+        console.log("trio", trio);
+
         const compiled = await compile(trio);
         if (compiled.isErr()) {
           console.log(compiled.error);
@@ -136,6 +147,66 @@ export default class PenrosePlugin extends Plugin {
   }
 }
 
+type Meta = {
+  style: string;
+  domain: string;
+  variation: string;
+};
+
+const extractMetadata = async (substance: string): Promise<Meta> => {
+  // Regular expressions for each key
+  const domainRegex = /--\s*domain:\s*(.*)\s*/;
+  const styleRegex = /--\s*style:\s*(.*)\s*/;
+  const variationRegex = /--\s*variation:\s*(.*)\s*/;
+
+  // Split the program into lines
+  const lines = substance.split("\n");
+
+  // Initialize an object to store the results
+  let domain = "";
+  let style = "";
+  let variation = "";
+
+  // Iterate over each line and extract the values
+  lines.forEach(async (line) => {
+    const domainMatch = line.match(domainRegex);
+    if (domainMatch) {
+      domain = domainMatch[1].trim();
+    }
+
+    const styleMatch = line.match(styleRegex);
+    if (styleMatch) {
+      style = styleMatch[1].trim();
+    }
+
+    const variationMatch = line.match(variationRegex);
+    if (variationMatch) {
+      variation = variationMatch[1].trim();
+    }
+  });
+  return { style, domain, variation };
+};
+
+const getTrio = async (
+  source: string,
+  readFile: (path: string) => Promise<string>,
+): Promise<{
+  substance: string;
+  style: string;
+  domain: string;
+  variation: string;
+}> => {
+  const res = await extractMetadata(source);
+  const style = await readFile(res.style);
+  const domain = await readFile(res.domain);
+  return {
+    substance: source,
+    style,
+    domain,
+    variation: res.variation,
+  };
+};
+
 class SampleModal extends Modal {
   constructor(app: App) {
     super(app);
@@ -166,7 +237,7 @@ class SampleSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("Setting #1")
+      .setName("")
       .setDesc("It's a secret")
       .addText((text) =>
         text
