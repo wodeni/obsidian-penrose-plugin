@@ -1,17 +1,5 @@
 import { compile, optimize, showError, toSVG } from "@penrose/core/bundle";
-import {
-  App,
-  Editor,
-  MarkdownView,
-  Modal,
-  Notice,
-  Plugin,
-  PluginSettingTab,
-  Setting,
-} from "obsidian";
-import { domain, style } from "./trios.js";
-
-// Remember to rename these classes and interfaces!
+import { App, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 
 interface PenroseSettings {
   mySetting: string;
@@ -23,94 +11,45 @@ const DEFAULT_SETTINGS: PenroseSettings = {
 
 export default class PenrosePlugin extends Plugin {
   settings: PenroseSettings;
-
   async onload() {
     await this.loadSettings();
 
-    // This creates an icon in the left ribbon.
-    const ribbonIconEl = this.addRibbonIcon(
-      "dice",
-      "Sample Plugin",
-      (evt: MouseEvent) => {
-        // Called when the user clicks the icon.
-        new Notice("This is a notice!");
-      },
-    );
-    // Perform additional things with the ribbon
-    ribbonIconEl.addClass("my-plugin-ribbon-class");
-
-    // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-    const statusBarItemEl = this.addStatusBarItem();
-    statusBarItemEl.setText("Status Bar Text");
-
-    // This adds a simple command that can be triggered anywhere
-    this.addCommand({
-      id: "open-sample-modal-simple",
-      name: "Open sample modal (simple)",
-      callback: () => {
-        new SampleModal(this.app).open();
-      },
-    });
-    // This adds an editor command that can perform some operation on the current editor instance
-    this.addCommand({
-      id: "sample-editor-command",
-      name: "Sample editor command",
-      editorCallback: (editor: Editor, view: MarkdownView) => {
-        console.log(editor.getSelection());
-        editor.replaceSelection("Sample Editor Command");
-      },
-    });
-    // This adds a complex command that can check whether the current state of the app allows execution of the command
-    this.addCommand({
-      id: "open-sample-modal-complex",
-      name: "Open sample modal (complex)",
-      checkCallback: (checking: boolean) => {
-        // Conditions to check
-        const markdownView =
-          this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (markdownView) {
-          // If checking is true, we're simply "checking" if the command can be run.
-          // If checking is false, then we want to actually perform the operation.
-          if (!checking) {
-            new SampleModal(this.app).open();
-          }
-
-          // This command will only show up in Command Palette when the check function returns true
-          return true;
-        }
-      },
-    });
-
     // This adds a settings tab so the user can configure various aspects of the plugin
-    this.addSettingTab(new SampleSettingTab(this.app, this));
+    this.addSettingTab(new PenroseSettingTab(this.app, this));
 
-    // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-    // Using this function will automatically remove the event listener when this plugin is disabled.
-    this.registerDomEvent(document, "click", (evt: MouseEvent) => {
-      console.log("click", evt);
-    });
-
-    // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-    this.registerInterval(
-      window.setInterval(() => console.log("setInterval"), 5 * 60 * 1000),
-    );
-
+    // register the code block processor for penrose
     this.registerMarkdownCodeBlockProcessor(
       "penrose",
       async (source: string, el, ctx) => {
-        const trio = {
-          substance: source,
-          style,
-          domain,
-          variation: "test",
-        };
+        // get the trio by reading file links in the metadata
+        const trio = await getTrio(source, async (path: string) => {
+          const file = this.app.vault.getAbstractFileByPath(path);
+          if (file instanceof TFile) {
+            try {
+              const fileContents = await this.app.vault.read(file);
+              return fileContents;
+            } catch (error) {
+              const msg = `Error reading file ${path}: ${error}`;
+              console.error(msg);
+              el.appendChild(document.createTextNode(msg));
+              return "";
+            }
+          } else {
+            const msg = `Error reading file ${path}`;
+            el.appendChild(document.createTextNode(msg));
+            return "";
+          }
+        });
+
+        // do the actual compilation and layout, reporting errors as we go
         const compiled = await compile(trio);
         if (compiled.isErr()) {
-          console.log(compiled.error);
+          console.error(compiled.error);
           el.appendChild(document.createTextNode(showError(compiled.error)));
         } else {
           const optimized = optimize(compiled.value);
           if (optimized.isErr()) {
+            console.error(optimized.error);
             el.appendChild(document.createTextNode(showError(optimized.error)));
           } else {
             const rendered = await toSVG(
@@ -136,23 +75,70 @@ export default class PenrosePlugin extends Plugin {
   }
 }
 
-class SampleModal extends Modal {
-  constructor(app: App) {
-    super(app);
-  }
+type Meta = {
+  style: string;
+  domain: string;
+  variation: string;
+};
 
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.setText("Woah!");
-  }
+// helper function that extracts metadata of domain path, style path, and variation from a substance source
+const extractMetadata = async (substance: string): Promise<Meta> => {
+  // Regular expressions for each key
+  const domainRegex = /--\s*domain:(.*)/;
+  const styleRegex = /--\s*style:(.*)/;
+  const variationRegex = /--\s*variation:(.*)/;
 
-  onClose() {
-    const { contentEl } = this;
-    contentEl.empty();
-  }
-}
+  // Split the program into lines
+  const lines = substance.split("\n");
 
-class SampleSettingTab extends PluginSettingTab {
+  // Initialize an object to store the results
+  let domain = "";
+  let style = "";
+  let variation = "";
+
+  // Iterate over each line and extract the values
+  lines.forEach(async (line) => {
+    const domainMatch = line.match(domainRegex);
+    if (domainMatch) {
+      domain = domainMatch[1].trim();
+    }
+
+    const styleMatch = line.match(styleRegex);
+    if (styleMatch) {
+      style = styleMatch[1].trim();
+    }
+
+    const variationMatch = line.match(variationRegex);
+    if (variationMatch) {
+      variation = variationMatch[1].trim();
+    }
+  });
+  return { style, domain, variation };
+};
+
+// from a substance file, extract the metadata and read the domain and style files by following the links in the metadata
+const getTrio = async (
+  source: string,
+  readFile: (path: string) => Promise<string>,
+): Promise<{
+  substance: string;
+  style: string;
+  domain: string;
+  variation: string;
+}> => {
+  const res = await extractMetadata(source);
+  const style = await readFile(res.style);
+  const domain = await readFile(res.domain);
+  return {
+    substance: source,
+    style,
+    domain,
+    variation: res.variation,
+  };
+};
+
+// NOTE: unused for now but left here in case we need more configuration
+class PenroseSettingTab extends PluginSettingTab {
   plugin: PenrosePlugin;
 
   constructor(app: App, plugin: PenrosePlugin) {
@@ -162,11 +148,10 @@ class SampleSettingTab extends PluginSettingTab {
 
   display(): void {
     const { containerEl } = this;
-
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("Setting #1")
+      .setName("")
       .setDesc("It's a secret")
       .addText((text) =>
         text
